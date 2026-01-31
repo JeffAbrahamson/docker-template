@@ -43,9 +43,12 @@ case "$action" in
 	docker compose run --rm --build dev-claude claude
 	# docker compose run --rm --build dev-claude /bin/bash
 	;;
+    codex)
+	docker compose run --rm --build dev-codex codex
+	;;
 
     *)
-	echo "Usage: ./docker-manage.sh build|sh|claude"
+	echo "Usage: ./docker-manage.sh build|sh|claude|codex"
 	echo "** Unrecognised action: \"$action\"."
         ;;
 esac

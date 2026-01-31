@@ -31,8 +31,10 @@ existing_user="$(getent passwd "$uid" | cut -d: -f1)"
 if [ "$(id -g "$existing_user")" != "$gid" ]; then
     usermod -g "$gid" "$existing_user" 2>/dev/null || true
 fi
-if [ "X$@" = Xclaude ]; then
+if [[ "$@" = claude ]]; then
     gosu "$existing_user" env HOME=/home/dev /usr/bin/node /usr/local/lib/node_modules/\@anthropic-ai/claude-code/cli.js
+elif [[ "$@" = codex ]]; then
+    gosu "$existing_user" env HOME=/home/dev /usr/bin/node /usr/local/lib/node_modules/\@openai/codex/bin/codex.js
 else
     echo "export HOME=/home/dev if necessary."
     env HOME=/home/dev gosu "$existing_user" "$@"

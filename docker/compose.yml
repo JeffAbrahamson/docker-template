@@ -34,3 +34,14 @@ services:
     volumes:
       - ~/.claude:/home/dev/.claude
       - ~/.claude.json:/home/dev/.claude.json
+
+  # Interactive shell with OpenAI Codex
+  dev-codex:
+    extends: dev-base
+    build:
+      target: compile-for-codex
+    command: sleep infinity
+    environment:
+      HOME: /home/dev
+    volumes:
+      - ~/.codex:/home/dev/.codex

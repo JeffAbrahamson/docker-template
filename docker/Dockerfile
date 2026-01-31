@@ -40,3 +40,11 @@ RUN apt-get update && apt-get install -y nodejs npm
 # Install Claude Code for AI-assisted development
 RUN npm install -g @anthropic-ai/claude-code
 
+
+FROM compile-dev-base AS compile-for-codex
+
+RUN apt-get update && apt-get install -y nodejs npm
+
+# Install OpenAI Codex CLI for AI-assisted development
+RUN npm install -g @openai/codex
+
