@@ -1,0 +1,1 @@
+Apply the changes from commit b5b17a5 in git@github.com:JeffAbrahamson/docker-template.git to this repo, adapting to the needs of this repo as needed.
