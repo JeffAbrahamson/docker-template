@@ -1,1 +1,0 @@
-Create a directory called docker/ and populate it based on the docker/ directory in repo git@github.com:JeffAbrahamson/docker-template.git, adapting to the needs and details of this repo.

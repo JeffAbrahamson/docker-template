@@ -1,0 +1,55 @@
+services:
+  # Base service - all others extend this
+  dev-base:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: compile-for-dev
+    image: dev-build
+    volumes:
+      - ..:/devsrc
+    environment:
+      SSH_AUTH_SOCK: /ssh-agent
+      SSH_USER: ${LOGNAME}
+
+  # Build/compile service - runs build command and exits
+  dev-compile:
+    extends: dev-base
+    image: dev-build
+    # Customize build command for your project:
+    # - make: make -C . -j $(nproc) -k
+    # - npm: npm run build
+    # - cargo: cargo build --release
+    # - go: go build ./...
+    command: >
+      /bin/bash -c "
+      make -C . -j $(nproc) -k"
+
+  # Interactive shell - persists for multiple shell sessions
+  dev-sh:
+    extends: dev-base
+    image: dev-sh
+    command: sleep infinity
+
+  # Claude Code - AI-assisted development
+  dev-claude:
+    extends: dev-base
+    build:
+      target: compile-for-claude
+    command: sleep infinity
+    environment:
+      HOME: /home/dev
+    volumes:
+      - ~/.claude:/home/dev/.claude
+      - ~/.claude.json:/home/dev/.claude.json
+
+  # OpenAI Codex - AI-assisted development
+  dev-codex:
+    extends: dev-base
+    build:
+      target: compile-for-codex
+    command: sleep infinity
+    environment:
+      HOME: /home/dev
+    volumes:
+      - ~/.codex:/home/dev/.codex
