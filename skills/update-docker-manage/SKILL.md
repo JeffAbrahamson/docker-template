@@ -75,9 +75,13 @@ docker/
 Use case statement pattern. See `examples/docker-manage.sh` for template.
 
 Key patterns:
+- `-b` flag: Optional `getopts`-based flag to force `docker compose build --no-cache` via `maybe_build_nocache()` helper
 - `build`/`test`: Use `docker compose up --build` (ephemeral)
 - `sh`: Use `docker compose up -d` then `exec` (persistent, count shells)
 - `claude`/`codex`: Use `docker compose run --rm` (ephemeral)
+- Each target calls `maybe_build_nocache <service>` before its main command
+
+Users typically invoke via a `dm()` shell function (see `references/docker-manage-pattern.md`) that auto-cds into `docker/`, e.g. `dm sh`, `dm -b claude`.
 
 ### compose.yml
 

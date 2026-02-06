@@ -41,3 +41,10 @@ All services mount the project root to `/devsrc` in the container. The entrypoin
 Package installation is split into:
 - `docker/stuff/packages-runtime.sh`: Runtime dependencies (git)
 - `docker/stuff/packages-dev.sh`: Development tools (emacs, ripgrep, fd-find, jq, etc.)
+
+## User interface
+
+The user typically invokes docker-manage.sh with the bash function
+dm() defined in bash/docker-manage-rc.sh.
+
+Pass `-b` to force a full rebuild with no Docker cache, e.g. `dm -b sh`.

@@ -4,13 +4,33 @@ set -euo pipefail
 
 export SSH_USER=$LOGNAME
 
+BUILD_NOCACHE=""
+while getopts "b" opt; do
+    case "$opt" in
+	b) BUILD_NOCACHE=1 ;;
+	*) ;;
+    esac
+done
+shift $((OPTIND - 1))
+
 action="$1"
 shift || true
+
+maybe_build_nocache() {
+    local service="$1"
+    if [ -n "$BUILD_NOCACHE" ]; then
+	echo "Explicit build requested."
+	docker compose build --no-cache "$service"
+    fi
+}
+
 case "$action" in
     build)
+	maybe_build_nocache dev-compile
 	docker compose -f compose.yml up --build dev-compile
 	;;
     sh)
+	maybe_build_nocache dev-sh
 	docker compose up -d --build dev-sh
 	docker compose exec dev-sh /usr/local/bin/entrypoint.sh /bin/bash
 
@@ -39,16 +59,19 @@ case "$action" in
 	# that instead.  It's also possibel that future iterations of
 	# something will obviate the need for this hack.
 
+	maybe_build_nocache dev-claude
 	# docker compose run --rm --build dev-claude /usr/local/bin/claude
 	docker compose run --rm --build dev-claude claude
 	# docker compose run --rm --build dev-claude /bin/bash
 	;;
     codex)
+	maybe_build_nocache dev-codex
 	docker compose run --rm --build dev-codex codex
 	;;
 
     *)
-	echo "Usage: ./docker-manage.sh build|sh|claude|codex"
+	echo "Usage: ./docker-manage.sh [-b] build|sh|claude|codex"
+	echo "  -b  Rebuild container from scratch (no cache)"
 	echo "** Unrecognised action: \"$action\"."
         ;;
 esac

@@ -10,18 +10,66 @@ set -euo pipefail
 
 export SSH_USER=$LOGNAME
 
+BUILD_NOCACHE=""
+while getopts "b" opt; do
+    case "$opt" in
+	b) BUILD_NOCACHE=1 ;;
+	*) ;;
+    esac
+done
+shift $((OPTIND - 1))
+
 action="$1"
 shift || true
+
+maybe_build_nocache() {
+    local service="$1"
+    if [ -n "$BUILD_NOCACHE" ]; then
+	echo "Explicit build requested."
+	docker compose build --no-cache "$service"
+    fi
+}
+
 case "$action" in
     target-name)
+        maybe_build_nocache dev-service
         # commands for this target
         ;;
     *)
-        echo "Usage: ./docker-manage.sh target1|target2|..."
+        echo "Usage: ./docker-manage.sh [-b] target1|target2|..."
+        echo "  -b  Rebuild container from scratch (no cache)"
         echo "** Unrecognised action: \"$action\"."
         ;;
 esac
 ```
+
+## The -b Flag (No-Cache Rebuild)
+
+Pass `-b` before the action to force a full `docker compose build --no-cache` before running the container. This is useful when packages or base images have changed and cached layers are stale.
+
+```bash
+./docker-manage.sh -b sh      # Rebuild from scratch, then start shell
+./docker-manage.sh -b claude   # Rebuild from scratch, then start Claude
+```
+
+The `maybe_build_nocache` function should be called at the start of each target's case block, passing the service name. It only triggers when `-b` is set.
+
+## Shell Convenience Function (dm)
+
+Users typically invoke docker-manage.sh via a `dm()` bash function that handles the `cd docker/` automatically:
+
+```bash
+dm ()
+{
+    if [ -r docker/docker-manage.sh -a -x docker/docker-manage.sh ]; then
+        ( cd docker && ./docker-manage.sh "$@" );
+    else
+        echo "No docker-manage.sh present.";
+    fi
+}
+```
+
+This lets users run `dm sh`, `dm -b claude`, etc. from any directory in the repo. The function can be placed in the user's shell rc file or sourced from a project-provided `bash/docker-manage-rc.sh`.
 
 ## Target Patterns
 
@@ -31,6 +79,7 @@ Run a command and exit:
 
 ```bash
 build)
+    maybe_build_nocache dev-compile
     docker compose -f compose.yml up --build dev-compile
     ;;
 ```
@@ -43,6 +92,7 @@ Maintains a persistent container for multiple shell sessions:
 
 ```bash
 sh)
+    maybe_build_nocache dev-sh
     # Start container in background
     docker compose up -d --build dev-sh
     # Execute shell in running container
@@ -72,6 +122,7 @@ Run in ephemeral containers with credential mounts:
 
 ```bash
 claude)
+    maybe_build_nocache dev-claude
     docker compose run --rm --build dev-claude claude
     ;;
 ```

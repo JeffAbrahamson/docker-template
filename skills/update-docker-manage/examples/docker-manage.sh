@@ -4,21 +4,42 @@ set -euo pipefail
 
 export SSH_USER=$LOGNAME
 
+BUILD_NOCACHE=""
+while getopts "b" opt; do
+    case "$opt" in
+	b) BUILD_NOCACHE=1 ;;
+	*) ;;
+    esac
+done
+shift $((OPTIND - 1))
+
 action="$1"
 shift || true
+
+maybe_build_nocache() {
+    local service="$1"
+    if [ -n "$BUILD_NOCACHE" ]; then
+	echo "Explicit build requested."
+	docker compose build --no-cache "$service"
+    fi
+}
+
 case "$action" in
     build)
         # Run build command (typically make)
         # Adapt the -C path and command as needed for the project
+        maybe_build_nocache dev-compile
         docker compose -f compose.yml up --build dev-compile
         ;;
     test)
         # Run test suite
         # Similar to build but runs tests instead
+        maybe_build_nocache dev-compile
         docker compose -f compose.yml run --rm --build dev-compile make test
         ;;
     sh)
         # Interactive shell - shares container across multiple shells
+        maybe_build_nocache dev-sh
         docker compose up -d --build dev-sh
         docker compose exec dev-sh /usr/local/bin/entrypoint.sh /bin/bash
 
@@ -35,15 +56,18 @@ case "$action" in
     claude)
         # Claude Code - runs in ephemeral container
         # The entrypoint handles the special invocation needed for claude
+        maybe_build_nocache dev-claude
         docker compose run --rm --build dev-claude claude
         ;;
     codex)
         # OpenAI Codex - runs in ephemeral container
+        maybe_build_nocache dev-codex
         docker compose run --rm --build dev-codex codex
         ;;
 
     *)
-        echo "Usage: ./docker-manage.sh build|test|sh|claude|codex"
+        echo "Usage: ./docker-manage.sh [-b] build|test|sh|claude|codex"
+        echo "  -b  Rebuild container from scratch (no cache)"
         echo "** Unrecognised action: \"$action\"."
         ;;
 esac
