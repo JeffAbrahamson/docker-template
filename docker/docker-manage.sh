@@ -56,13 +56,20 @@ case "$action" in
 
         # Count interactive bash terminals, excluding the sleep process.
         # Cleanup must also run when the shell returns a nonzero status.
+        cleanup_status=0
         num_shells=$(docker_compose exec -T dev-sh ps -eo tty,comm |
-            awk '$1 ~ /^pts\// && $2=="bash" {print $1}' | sort -u | wc -l)
-        if [ "$num_shells" -ne 0 ]; then
+            awk '$1 ~ /^pts\// && $2=="bash" {print $1}' | sort -u | wc -l) || cleanup_status=$?
+        if [ "$cleanup_status" -ne 0 ]; then
+            echo "Could not check remaining shells; leaving dev-sh running." >&2
+        elif [ "$num_shells" -ne 0 ]; then
             echo "${num_shells} shells still running."
         else
-            docker_compose stop dev-sh
+            docker_compose stop dev-sh || cleanup_status=$?
+            if [ "$cleanup_status" -ne 0 ]; then
+                echo "Could not stop dev-sh." >&2
+            fi
         fi
+        if [ "$shell_status" -eq 0 ]; then shell_status=$cleanup_status; fi
         exit "$shell_status"
         ;;
     down)

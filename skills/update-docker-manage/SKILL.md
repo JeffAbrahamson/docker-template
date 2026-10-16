@@ -24,6 +24,24 @@ For a new setup, adapt the files in [examples/](examples/) relative to this
 skill. For an upgrade, apply the relevant improvements to the existing files;
 do not replace them wholesale. Make scripts executable when needed.
 
+The examples are stored flat for reference; install them in this project layout
+so Compose's build paths and the Dockerfile's `COPY` paths resolve:
+
+```text
+docker/
+├── Dockerfile
+├── compose.yml
+├── docker-manage.sh
+└── stuff/
+    ├── entrypoint.sh
+    ├── packages-dev.sh
+    └── packages-runtime.sh
+```
+
+Make `docker/docker-manage.sh` executable. The Dockerfile sets executable
+permissions on the scripts it copies into the image. Keep the example
+entrypoint running as root for UID/GID setup; it drops privileges through gosu.
+
 ## Workflow conventions
 
 - Resolve Compose relative to the script, independent of the caller's cwd.
@@ -33,6 +51,7 @@ do not replace them wholesale. Make scripts executable when needed.
 - Keep `sh` persistent with `up -d` and `exec`; stop it after the last
   interactive shell exits, including after nonzero shell exits.
 - Provide `down` for explicit development-stack shutdown.
+  Preserve named data volumes; a no-cache rebuild does not reset volumes.
 - Preserve quoted runner arguments with `"$@"`. Missing/unknown actions and
   invalid options should print usage and return nonzero.
 - Keep local and CI test entry points aligned. A test target may include lint,
@@ -70,3 +89,10 @@ when the wrapper changes. Run the affected project's real command when its
 toolchain and dependencies are available. For database changes, verify
 readiness, isolation, and cleanup without affecting a running development
 stack. Do not treat a syntax/configuration check as a passing test suite.
+
+When maintaining docker-template itself, keep each file in `examples/` identical
+to its counterpart in `docker/` (shell/package helpers live in `docker/stuff/`).
+Render the examples after arranging them in the layout above; the flat example
+directory is not a build context. Use mocked Docker calls to verify dispatch,
+quoted arguments, command failures, and shell cleanup. The template has no
+Makefile; do not build its images to validate documentation changes.

@@ -8,8 +8,9 @@ Do not reintroduce agent CLI targets, credential mounts, or image stages.
 ## Working files
 
 - `docker/`: files copied into new projects.
-- `skills/update-docker-manage/examples/`: matching skill templates. Keep
-  behavior aligned with `docker/`, allowing project-specific runtime choices.
+- `skills/update-docker-manage/examples/`: flat copies of the templates in
+  `docker/` and `docker/stuff/`. Keep corresponding files identical here;
+  consuming projects choose their own runtimes and commands.
 - `skills/update-docker-manage/references/`: conditional implementation guidance.
 - `bash/docker-manage-rc.sh`: `dm` wrapper and dynamic action completion.
 

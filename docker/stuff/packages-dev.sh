@@ -5,8 +5,10 @@ echo; echo "==== packages-dev.sh ===="
 
 export DEBIAN_FRONTEND=noninteractive
 
-# Note that emacs-bin-common is only for etags.
 apt-get update
+
+# Development tools
+# Customize based on project preferences
 apt-get install -y                              \
     curl                                        \
     emacs-bin-common                            \
@@ -20,5 +22,12 @@ apt-get install -y                              \
     rsync                                       \
     strace                                      \
 
-#   python3                                     \
-#   ipython3                                    \
+# Examples of additional dev tools:
+# Python development:
+#   python3 ipython3 python3-pytest
+# Node.js development:
+#   nodejs npm
+# Code formatting:
+#   clang-format prettier
+# Documentation:
+#   pandoc

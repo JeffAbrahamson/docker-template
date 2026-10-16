@@ -31,5 +31,4 @@ existing_user="$(getent passwd "$uid" | cut -d: -f1)"
 if [ "$(id -g "$existing_user")" != "$gid" ]; then
     usermod -g "$gid" "$existing_user" 2>/dev/null || true
 fi
-
 exec gosu "$existing_user" env HOME=/home/dev "$@"

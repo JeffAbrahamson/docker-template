@@ -1,10 +1,17 @@
 dm ()
 {
-    if [ -r docker/docker-manage.sh -a -x docker/docker-manage.sh ]; then
-        ( cd docker && ./docker-manage.sh "$@" );
-    else
-        echo "No docker-manage.sh present.";
+    local file="docker/docker-manage.sh"
+    if [ ! -e "$file" ]; then
+        echo "$file does not exist." >&2
+        return 1
+    elif [ ! -r "$file" ]; then
+        echo "$file is not readable." >&2
+        return 1
+    elif [ ! -x "$file" ]; then
+        echo "$file is not executable." >&2
+        return 1
     fi
+    (cd docker && ./docker-manage.sh "$@")
 }
 
 _dm_actions()

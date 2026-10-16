@@ -44,6 +44,9 @@ entrypoint. Capture a failed shell status so strict mode does not skip cleanup.
 After exit, count distinct terminals running interactive bash with
 `exec -T ... ps -eo tty,comm`; install `procps` in images that use this check.
 Stop only the shell service when none remain, and return the shell status.
+If the terminal check fails, leave the service running rather than stopping
+other sessions. Report cleanup failures; return a cleanup failure when the
+shell succeeded, and retain the original shell failure otherwise.
 
 This is a convenience check, not a lock against concurrent shell creation.
 Do not call project-wide `down` after every shared shell or command. Provide
@@ -57,12 +60,18 @@ invoke `dm` from the repository root. Preserve argument boundaries:
 
 ```bash
 dm() {
-    if [ -r docker/docker-manage.sh ] && [ -x docker/docker-manage.sh ]; then
-        (cd docker && ./docker-manage.sh "$@")
-    else
-        echo "No docker-manage.sh present." >&2
+    local file="docker/docker-manage.sh"
+    if [ ! -e "$file" ]; then
+        echo "$file does not exist." >&2
+        return 1
+    elif [ ! -r "$file" ]; then
+        echo "$file is not readable." >&2
+        return 1
+    elif [ ! -x "$file" ]; then
+        echo "$file is not executable." >&2
         return 1
     fi
+    (cd docker && ./docker-manage.sh "$@")
 }
 ```
 
