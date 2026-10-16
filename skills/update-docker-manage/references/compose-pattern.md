@@ -1,132 +1,57 @@
-# compose.yml Pattern
+# Compose pattern
 
-The compose.yml file defines Docker services using an extends pattern for shared configuration.
+Adapt [compose.yml](../examples/compose.yml). The base service holds the common
+build, working directory, and source mount; command services extend it.
 
-## Base Service
+## Project and image identity
 
-All services extend from a base service:
+Set a top-level repository-specific `name:`. The default name would otherwise
+be `docker` in every repository, causing services, networks, and volumes to
+collide. Give explicit `image:` tags repository-specific names too. Different
+Dockerfile stages need different tags if their contents differ.
 
-```yaml
-services:
-  dev-base:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-      target: compile-for-dev
-    image: dev-build
-    volumes:
-      - ..:/devsrc
-    environment:
-      SSH_AUTH_SOCK: /ssh-agent
-      SSH_USER: ${LOGNAME}
-```
+Use `--project-name` to isolate worktrees or concurrent test stacks where
+needed. Do not hardcode `container_name`, which defeats project isolation.
 
-Key configuration:
-- `context: ..` - Build context is project root
-- `dockerfile: docker/Dockerfile` - Dockerfile location
-- `target` - Multi-stage build target
-- `volumes: ..:/devsrc` - Mount project root
-- `SSH_AUTH_SOCK` - For git SSH operations
+## Commands and mounts
 
-## Service Patterns
+- `dev-compile`/`dev-test`: one-shot commands, invoked with `run --rm --build`.
+- `dev-sh`: `sleep infinity`, kept alive for multiple exec sessions.
+- App servers: explicit run service, ports, and only needed dependencies.
 
-### Compile Service (build, test)
+The example mounts `..:/devsrc` and sets `working_dir: /devsrc`. Make
+`TARGET_DIR` in the entrypoint match a different source path. Mounts hide
+image contents at their destination: use a dedicated dependency volume or
+install dependencies outside the checkout. An image-only test service can
+omit the source mount for tests independent of host state; rebuild after edits.
 
-```yaml
-dev-compile:
-  extends: dev-base
-  image: dev-build
-  command: >
-    /bin/bash -c "
-    make -C . -j $(nproc) -k"
-```
+Use YAML command arrays for clear argument boundaries. Container shell
+variables need `$$` to survive Compose interpolation, for example
+`command: ["bash", "-c", 'exec make -j "$$(nproc)" -k']`.
 
-Runs build command and exits. Customize command for your build system.
+Do not advertise an SSH agent socket without mounting it. Add socket mounts
+and `SSH_AUTH_SOCK` only for workflows needing SSH. Keep staging tunnels and
+private configuration out of test services. No agent credential mounts belong
+in this pattern.
 
-### Shell Service
+## Test databases and dependency readiness
 
-```yaml
-dev-sh:
-  extends: dev-base
-  image: dev-sh
-  command: sleep infinity
-```
+Use a disposable local database, explicit test-only credentials and service
+DNS names, without publishing a host port unless needed. Wait with a
+healthcheck and `depends_on: condition: service_healthy`. A TCP query as the
+app user verifies database/user initialization better than a socket ping.
+Use `condition: service_completed_successfully` for required one-shot setup.
+Use `--no-deps` for focused commands that do not require the database.
 
-Stays running for shell attach. The `sleep infinity` keeps container alive.
+`run --rm` does not remove dependencies. For concurrent suites, create a
+unique lowercase Compose project per run, often with a separate
+`compose.test.yml`. Reserve names with `mktemp`, not platform-specific inode
+commands. Define an EXIT cleanup trap before starting services. Run cleanup
+against the same project and files, remove that run's disposable volumes, and
+preserve failures. Report cleanup failure even if tests passed. Avoid deleting
+shared explicitly tagged images or calling `down` on another run's stack.
 
-### AI Tool Services
-
-```yaml
-dev-claude:
-  extends: dev-base
-  build:
-    target: compile-for-claude
-  command: sleep infinity
-  environment:
-    HOME: /home/dev
-  volumes:
-    - ~/.claude:/home/dev/.claude
-    - ~/.claude.json:/home/dev/.claude.json
-```
-
-Key features:
-- Different build target (compile-for-claude)
-- `HOME: /home/dev` ensures correct home directory
-- Mount credential files from host
-
-## Volume Mounts
-
-### Project Mount
-
-All services mount the project:
-```yaml
-volumes:
-  - ..:/devsrc
-```
-
-### Credential Mounts
-
-AI tools need their config directories:
-```yaml
-volumes:
-  - ~/.claude:/home/dev/.claude
-  - ~/.claude.json:/home/dev/.claude.json
-```
-
-### Cache Mounts (Optional)
-
-For faster builds, mount caches:
-```yaml
-volumes:
-  - ~/.npm:/home/dev/.npm
-  - ~/.cargo:/home/dev/.cargo
-```
-
-## Adding New Services
-
-To add a service:
-
-1. Define it extending dev-base
-2. Set appropriate build target if needed
-3. Add command or leave for docker-manage.sh to specify
-4. Add volume mounts for any needed credentials/caches
-
-Example database service:
-
-```yaml
-dev-db:
-  image: postgres:15
-  environment:
-    POSTGRES_PASSWORD: devpassword
-  volumes:
-    - pgdata:/var/lib/postgresql/data
-
-volumes:
-  pgdata:
-```
-
-## Environment Variables
-
-- `SSH_AUTH_SOCK`: For SSH agent forwarding
-- `SSH_USER`: Host username for entrypoint.sh
-- `HOME`: Override for correct home directory in some services
+For isolated tests use tmpfs or disposable database volumes and consistent
+credentials independent of host environment overrides. Reuse common service
+definitions via `extends` when useful, but do not inherit host source mounts,
+staging tunnels, or secrets into an image-only test service.

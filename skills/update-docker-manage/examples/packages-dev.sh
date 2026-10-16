@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 echo; echo "==== packages-dev.sh ===="
 
@@ -16,6 +17,7 @@ apt-get install -y                              \
     iproute2                                    \
     jq                                          \
     lsb-release                                 \
+    procps                                      \
     ripgrep                                     \
     rsync                                       \
     strace                                      \

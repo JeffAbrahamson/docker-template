@@ -1,229 +1,58 @@
-# Target Customization Guide
+# Target customization
 
-Adapt the Docker template for different project types.
+Use the repository's existing runner and CI contract. Do not add build targets
+for projects with nothing to compile, or assume `test` means unit tests alone.
+Production uses a `test.sh` lint gate; webpub-viewer combines lint, format,
+root tests, and workspace tests. A final success must cover the whole gate.
 
-## Node.js Projects
+## Runtime-specific choices
 
-### packages-runtime.sh
+| Project | Dependency setup | Typical commands |
+| --- | --- | --- |
+| Node.js | Runtime from project requirements; `npm ci` or frozen Yarn lock | `npm run build`, `npm test`, focused Jest/webpack targets |
+| Ruby | `.ruby-version`, locked gems, frozen Bundler | `bundle exec ruby ...`, `bundle exec rails test`, RuboCop |
+| Python | Compatible pinned runtime and locked requirements; venv outside source mount | `./test.sh`, `pytest`, project lint commands |
+| C/C++ | Compiler, Make/CMake and required libraries | `make -j ... -k`, `make test`, focused test binaries |
+| Go | Project's Go version and modules | `go build ./...`, `go test ./...` |
+| Rust | Project toolchain and lockfile | `cargo build`, `cargo test` |
+
+Forward selectors using the actual runner. For example:
+
 ```bash
-apt-get install -y \
-    git \
-    nodejs \
-    npm
-```
-
-### compose.yml dev-compile command
-```yaml
-command: >
-  /bin/bash -c "
-  npm ci && npm run build"
-```
-
-### Test target
-```bash
-test)
-    docker compose run --rm --build dev-compile npm test
+jstest)
+    maybe_build_nocache dev-sh
+    docker_compose run --no-deps --rm --build dev-sh yarn test:coverage "$@"
     ;;
 ```
 
-## Python Projects
+Do not append selectors after a service and expect its default command to
+remain: Compose treats supplied arguments as the replacement command.
 
-### packages-runtime.sh
-```bash
-apt-get install -y \
-    git \
-    python3 \
-    python3-pip \
-    python3-venv
-```
+## Development versus test dependencies
 
-### compose.yml dev-compile command
-```yaml
-command: >
-  /bin/bash -c "
-  pip install -e . && python -m build"
-```
+A named dependency volume makes development fast if refreshed when the lock
+or runtime changes. If concurrent services can install into it, serialize
+installers (for example, a lock on the volume directory). Do not assume that
+this protects applications already reading the directory during replacement.
 
-### Test target
-```bash
-test)
-    docker compose run --rm --build dev-compile pytest
-    ;;
-```
+Tests can use anonymous installed-dependency volumes and a fresh locked install,
+sharing only a package download cache. Alternatively, bake locked dependencies
+and source into a test image without host mounts. Keep local and CI behavior
+aligned; a warm host checkout must not be necessary for tests to pass.
 
-### Virtual environment mount (optional)
-```yaml
-dev-compile:
-  volumes:
-    - ..:/devsrc
-    - venv:/devsrc/.venv
-```
+## Application and database targets
 
-## Go Projects
+Expose `run`/`dev` with needed ports and dependency readiness; Compose `run`
+does not publish service ports unless requested with `--service-ports` or `-p`.
+Use `up` for the normal multi-service app lifecycle. Keep test databases local
+and disposable. Put optional integration suites behind an explicit target if
+they are costly or unnecessary for most edits. See
+[compose-pattern.md](compose-pattern.md) for concurrent stacks and cleanup.
 
-### packages-runtime.sh
-```bash
-apt-get install -y \
-    git \
-    golang
-```
+## Focused verification
 
-### compose.yml dev-compile command
-```yaml
-command: >
-  /bin/bash -c "
-  go build ./..."
-```
-
-### Test target
-```bash
-test)
-    docker compose run --rm --build dev-compile go test ./...
-    ;;
-```
-
-### Go module cache mount
-```yaml
-dev-compile:
-  volumes:
-    - ..:/devsrc
-    - ~/go:/home/dev/go
-```
-
-## Rust Projects
-
-### packages-runtime.sh
-```bash
-apt-get install -y \
-    git \
-    rustc \
-    cargo
-```
-
-### compose.yml dev-compile command
-```yaml
-command: >
-  /bin/bash -c "
-  cargo build --release"
-```
-
-### Test target
-```bash
-test)
-    docker compose run --rm --build dev-compile cargo test
-    ;;
-```
-
-### Cargo cache mount
-```yaml
-dev-compile:
-  volumes:
-    - ..:/devsrc
-    - ~/.cargo:/home/dev/.cargo
-```
-
-## C/C++ Projects (Make-based)
-
-### packages-runtime.sh
-```bash
-apt-get install -y \
-    git \
-    build-essential \
-    cmake
-```
-
-### compose.yml dev-compile command
-```yaml
-command: >
-  /bin/bash -c "
-  make -C . -j $(nproc) -k"
-```
-
-Default template already supports this pattern.
-
-## Projects with Databases
-
-Add database service to compose.yml:
-
-```yaml
-dev-db:
-  image: postgres:15
-  environment:
-    POSTGRES_PASSWORD: devpassword
-    POSTGRES_DB: devdb
-  volumes:
-    - pgdata:/var/lib/postgresql/data
-  healthcheck:
-    test: ["CMD-SHELL", "pg_isready -U postgres"]
-    interval: 5s
-    timeout: 5s
-    retries: 5
-
-dev-compile:
-  extends: dev-base
-  depends_on:
-    dev-db:
-      condition: service_healthy
-  environment:
-    DATABASE_URL: postgres://postgres:devpassword@dev-db:5432/devdb
-
-volumes:
-  pgdata:
-```
-
-## Additional Targets
-
-### Lint Target
-```bash
-lint)
-    docker compose run --rm --build dev-compile make lint
-    ;;
-```
-
-### Format Target
-```bash
-format)
-    docker compose run --rm --build dev-compile make format
-    ;;
-```
-
-### Documentation Target
-```bash
-docs)
-    docker compose run --rm --build dev-compile make docs
-    ;;
-```
-
-### Watch/Dev Server Target
-For projects with hot reload:
-
-```bash
-dev)
-    docker compose run --rm -p 3000:3000 --build dev-compile npm run dev
-    ;;
-```
-
-## Multi-Language Projects
-
-For projects with multiple languages:
-
-1. Add all runtimes to packages-runtime.sh
-2. Create separate compile services if needed:
-
-```yaml
-dev-compile-frontend:
-  extends: dev-base
-  command: npm run build
-
-dev-compile-backend:
-  extends: dev-base
-  command: cargo build
-```
-
-3. Add combined targets:
-
-```bash
-build)
-    docker compose up --build dev-compile-frontend dev-compile-backend
-    ;;
-```
+Separate independent expensive work when useful: a webpack build or JS suite
+need not start MySQL just because Rails tests do. Use `--no-deps` only when
+the job genuinely has no dependency requirement. Add format/docs/lint targets
+when the project has corresponding commands; avoid speculative targets or
+commands that silently do something different from CI.

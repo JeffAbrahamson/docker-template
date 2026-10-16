@@ -1,73 +1,78 @@
 #!/bin/bash
-
 set -euo pipefail
 
-export SSH_USER=$LOGNAME
+# Resolve Compose relative to this script, regardless of the caller's cwd.
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+docker_compose() {
+    docker compose -f "$script_dir/compose.yml" "$@"
+}
 
 BUILD_NOCACHE=""
-while getopts "b" opt; do
+usage() {
+    echo "Usage: $0 [-b] build|test|sh|down [arguments...]"
+    echo "  -b  Rebuild the selected service without Docker cache"
+}
+while getopts ":b" opt; do
     case "$opt" in
-	b) BUILD_NOCACHE=1 ;;
-	*) ;;
+        b) BUILD_NOCACHE=1 ;;
+        *) usage >&2; exit 1 ;;
     esac
 done
 shift $((OPTIND - 1))
-
-action="$1"
-shift || true
+action="${1:-}"
+if [ "$#" -gt 0 ]; then shift; fi
 
 maybe_build_nocache() {
-    local service="$1"
     if [ -n "$BUILD_NOCACHE" ]; then
-	echo "Explicit build requested."
-	docker compose build --no-cache "$service"
+        docker_compose build --no-cache "$1"
     fi
 }
 
 case "$action" in
     build)
-        # Run build command (typically make)
-        # Adapt the -C path and command as needed for the project
         maybe_build_nocache dev-compile
-        docker compose -f compose.yml up --build dev-compile
-        ;;
-    test)
-        # Run test suite
-        # Similar to build but runs tests instead
-        maybe_build_nocache dev-compile
-        docker compose -f compose.yml run --rm --build dev-compile make test
-        ;;
-    sh)
-        # Interactive shell - shares container across multiple shells
-        maybe_build_nocache dev-sh
-        docker compose up -d --build dev-sh
-        docker compose exec dev-sh /usr/local/bin/entrypoint.sh /bin/bash
-
-        # When shell exits, check if other shells are still running
-        echo "Checking if other shells are running..."
-        num_shells=$(docker compose exec dev-sh ps -eo tty,comm | awk '$1 ~ /^pts\// && $2=="bash" {print $1}' | sort -u | wc -l)
-        if [ "$num_shells" -ne 0 ]; then
-            echo "${num_shells} still running."
+        if [ "$#" -eq 0 ]; then
+            docker_compose run --rm --build dev-compile
         else
-            echo "No more shells detected, stopping container..."
-            docker compose stop dev-sh
+            # Adapt this runner when changing the project's build system.
+            docker_compose run --rm --build dev-compile /bin/bash -c \
+                'exec make -j "$(nproc)" -k "$@"' -- "$@"
         fi
         ;;
-    claude)
-        # Claude Code - runs in ephemeral container
-        # The entrypoint handles the special invocation needed for claude
-        maybe_build_nocache dev-claude
-        docker compose run --rm --build dev-claude claude
+    test)
+        maybe_build_nocache dev-test
+        if [ "$#" -eq 0 ]; then
+            docker_compose run --rm --build dev-test
+        else
+            # Adapt this runner when changing the project's test system.
+            docker_compose run --rm --build dev-test make test "$@"
+        fi
         ;;
-    codex)
-        # OpenAI Codex - runs in ephemeral container
-        maybe_build_nocache dev-codex
-        docker compose run --rm --build dev-codex codex
-        ;;
+    sh)
+        maybe_build_nocache dev-sh
+        docker_compose up -d --build dev-sh
+        shell_status=0
+        docker_compose exec dev-sh /usr/local/bin/entrypoint.sh /bin/bash "$@" || shell_status=$?
 
+        # Count interactive bash terminals, excluding the sleep process.
+        # Cleanup must also run when the shell returns a nonzero status.
+        num_shells=$(docker_compose exec -T dev-sh ps -eo tty,comm |
+            awk '$1 ~ /^pts\// && $2=="bash" {print $1}' | sort -u | wc -l)
+        if [ "$num_shells" -ne 0 ]; then
+            echo "${num_shells} shells still running."
+        else
+            docker_compose stop dev-sh
+        fi
+        exit "$shell_status"
+        ;;
+    down)
+        docker_compose down
+        ;;
     *)
-        echo "Usage: ./docker-manage.sh [-b] build|test|sh|claude|codex"
-        echo "  -b  Rebuild container from scratch (no cache)"
-        echo "** Unrecognised action: \"$action\"."
+        usage >&2
+        if [ -n "$action" ]; then
+            echo "Unrecognised action: $action" >&2
+        fi
+        exit 1
         ;;
 esac

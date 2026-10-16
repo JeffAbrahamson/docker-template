@@ -1,160 +1,75 @@
-# docker-manage.sh Pattern
+# docker-manage.sh pattern
 
-The docker-manage.sh script is the main entry point for Docker development operations.
+Start with [the example script](../examples/docker-manage.sh). It resolves
+`compose.yml` from `BASH_SOURCE[0]` and wraps `docker compose -f ...` in a
+function. Apply the same wrapper to every action, including no-cache builds
+and cleanup; callers should not need to `cd docker` first.
 
-## Structure
+Use strict shell options, safe action parsing, usage on invalid input, and
+`"$@"` for forwarded arguments. `-b` before the action performs
+`build --no-cache <service>`; normal commands use `--build` with cache.
 
-```bash
-#!/bin/bash
-set -euo pipefail
+## One-shot commands
 
-export SSH_USER=$LOGNAME
-
-BUILD_NOCACHE=""
-while getopts "b" opt; do
-    case "$opt" in
-	b) BUILD_NOCACHE=1 ;;
-	*) ;;
-    esac
-done
-shift $((OPTIND - 1))
-
-action="$1"
-shift || true
-
-maybe_build_nocache() {
-    local service="$1"
-    if [ -n "$BUILD_NOCACHE" ]; then
-	echo "Explicit build requested."
-	docker compose build --no-cache "$service"
-    fi
-}
-
-case "$action" in
-    target-name)
-        maybe_build_nocache dev-service
-        # commands for this target
-        ;;
-    *)
-        echo "Usage: ./docker-manage.sh [-b] target1|target2|..."
-        echo "  -b  Rebuild container from scratch (no cache)"
-        echo "** Unrecognised action: \"$action\"."
-        ;;
-esac
-```
-
-## The -b Flag (No-Cache Rebuild)
-
-Pass `-b` before the action to force a full `docker compose build --no-cache` before running the container. This is useful when packages or base images have changed and cached layers are stale.
+Use `run --rm --build` for a build, test, or lint command. A service can define
+the default command; supplied arguments after the service replace that
+command, so forward selectors explicitly through the runner:
 
 ```bash
-./docker-manage.sh -b sh      # Rebuild from scratch, then start shell
-./docker-manage.sh -b claude   # Rebuild from scratch, then start Claude
-```
-
-The `maybe_build_nocache` function should be called at the start of each target's case block, passing the service name. It only triggers when `-b` is set.
-
-## Shell Convenience Function (dm)
-
-Users typically invoke docker-manage.sh via a `dm()` bash function that handles the `cd docker/` automatically:
-
-```bash
-dm ()
-{
-    if [ -r docker/docker-manage.sh -a -x docker/docker-manage.sh ]; then
-        ( cd docker && ./docker-manage.sh "$@" );
+test)
+    maybe_build_nocache dev-test
+    if [ "$#" -eq 0 ]; then
+        docker_compose run --rm --build dev-test
     else
-        echo "No docker-manage.sh present.";
+        docker_compose run --rm --build dev-test pytest "$@"
+    fi
+    ;;
+```
+
+Keep the no-argument path using the service's configured command. Adapt the
+explicit runner on the argument path alongside that command when changing
+build/test systems. discovery_ingest does this and explicitly constructs its
+Ruby runner when test filenames are passed.
+
+A persistent app uses `up`; a job that uses `up` must select its exit status
+with `--exit-code-from <service>` and handle dependency shutdown. For editor
+output use `run -T` and `pipefail` if piping to `cat`/`tee`. Preserve the real
+command failure, and make build paths resolvable by the editor.
+
+## Shared shells
+
+The example starts `dev-sh` with `up -d --build` and attaches with `exec`.
+Invoke the UID/GID entrypoint explicitly because exec bypasses the image's
+entrypoint. Capture a failed shell status so strict mode does not skip cleanup.
+After exit, count distinct terminals running interactive bash with
+`exec -T ... ps -eo tty,comm`; install `procps` in images that use this check.
+Stop only the shell service when none remain, and return the shell status.
+
+This is a convenience check, not a lock against concurrent shell creation.
+Do not call project-wide `down` after every shared shell or command. Provide
+`down` as an explicit action; do not delete named data volumes by default.
+
+## Shell shorthand
+
+The repository's `bash/docker-manage-rc.sh` defines `dm` and action completion.
+It looks for `docker/docker-manage.sh` relative to the current directory, so
+invoke `dm` from the repository root. Preserve argument boundaries:
+
+```bash
+dm() {
+    if [ -r docker/docker-manage.sh ] && [ -x docker/docker-manage.sh ]; then
+        (cd docker && ./docker-manage.sh "$@")
+    else
+        echo "No docker-manage.sh present." >&2
+        return 1
     fi
 }
 ```
 
-This lets users run `dm sh`, `dm -b claude`, etc. from any directory in the repo. The function can be placed in the user's shell rc file or sourced from a project-provided `bash/docker-manage-rc.sh`.
+## Failure handling
 
-## Target Patterns
-
-### Ephemeral Build Targets (build, test)
-
-Run a command and exit:
-
-```bash
-build)
-    maybe_build_nocache dev-compile
-    docker compose -f compose.yml up --build dev-compile
-    ;;
-```
-
-The container runs the command defined in compose.yml and exits when done.
-
-### Interactive Shell Target (sh)
-
-Maintains a persistent container for multiple shell sessions:
-
-```bash
-sh)
-    maybe_build_nocache dev-sh
-    # Start container in background
-    docker compose up -d --build dev-sh
-    # Execute shell in running container
-    docker compose exec dev-sh /usr/local/bin/entrypoint.sh /bin/bash
-
-    # When this shell exits, check for other shells
-    echo "Checking if other shells are running..."
-    num_shells=$(docker compose exec dev-sh ps -eo tty,comm | awk '$1 ~ /^pts\// && $2=="bash" {print $1}' | sort -u | wc -l)
-    if [ "$num_shells" -ne 0 ]; then
-        echo "${num_shells} still running."
-    else
-        echo "No more shells detected, stopping container..."
-        docker compose stop dev-sh
-    fi
-    ;;
-```
-
-Key features:
-- Uses `up -d` to keep container running in background
-- Uses `exec` to attach to running container
-- Counts active shells before stopping container
-- Allows multiple developers to share the same container
-
-### AI Tool Targets (claude, codex)
-
-Run in ephemeral containers with credential mounts:
-
-```bash
-claude)
-    maybe_build_nocache dev-claude
-    docker compose run --rm --build dev-claude claude
-    ;;
-```
-
-Key features:
-- Uses `run --rm` for ephemeral container (removed after exit)
-- The compose.yml mounts credential directories (~/.claude, ~/.codex)
-- entrypoint.sh handles special invocation for these tools
-
-## Adding Custom Targets
-
-To add a new target:
-
-1. Add case entry to docker-manage.sh
-2. Add service to compose.yml if needed
-3. Add Dockerfile stage if custom image needed
-
-Example custom target for linting:
-
-```bash
-lint)
-    docker compose run --rm --build dev-compile make lint
-    ;;
-```
-
-## Error Handling
-
-The script uses `set -euo pipefail`:
-- `-e`: Exit on error
-- `-u`: Error on undefined variables
-- `-o pipefail`: Pipeline fails if any command fails
-
-## SSH Agent Forwarding
-
-`export SSH_USER=$LOGNAME` is used by compose.yml to set up SSH agent forwarding for git operations inside containers.
+Strict mode does not replace deliberate status handling. Capture status before
+cleanup; enable `pipefail` for logging pipelines. If a full gate runs multiple
+suites after failures, accumulate failures and return nonzero with an aggregate
+verdict. Bounded retries are appropriate only for demonstrated infrastructure
+failures, never arbitrary test failures.

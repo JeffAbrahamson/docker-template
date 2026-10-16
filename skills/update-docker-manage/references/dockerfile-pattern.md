@@ -1,145 +1,53 @@
-# Dockerfile Pattern
+# Dockerfile pattern
 
-The Dockerfile uses multi-stage builds for different development scenarios.
+Adapt [the example Dockerfile](../examples/Dockerfile). `compile-dev-base`
+installs dependencies and the UID/GID entrypoint; `compile-for-dev` provides
+a named development target. No agent-specific stages are needed.
 
-## Base Stage
+## Runtime and caching
 
-```dockerfile
-FROM ubuntu:24.04 AS compile-dev-base
+Select the image/runtime from the project's version files, locks, and
+production requirements. Do not replace a required Python/Ruby/Node version
+with the distro default merely to follow this template. For downloaded
+runtimes or tools, pin versions and verify checksums where applicable.
 
-RUN mkdir -p /usr/local/
+Copy package scripts and dependency manifests before changing source. Install
+locked dependencies before `COPY . .` so source edits reuse dependency layers.
+Use frozen/locked installers and avoid modifying host lockfiles during tests.
+For example, Bundler may need `BUNDLE_APP_CONFIG` outside the checkout to
+ignore a host-only `.bundle/config`, plus `BUNDLE_FROZEN=true`.
 
-WORKDIR /devsrc
-
-# Install runtime packages
-COPY --chmod=755 docker/stuff/packages-runtime.sh ./
-RUN ./packages-runtime.sh 2>&1 | tee /var/packages-runtime.out
-
-# Install development packages
-COPY --chmod=755 docker/stuff/packages-dev.sh ./
-RUN ./packages-dev.sh 2>&1 | tee /var/packages-dev.out
-
-# Create dev user for non-root operations
-RUN useradd -ms /bin/bash dev
-
-# Install gosu for privilege management
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      gosu \
-    && rm -rf /var/lib/apt/lists/*
-
-# Add entrypoint script
-COPY --chmod=755 docker/stuff/entrypoint.sh /usr/local/bin/entrypoint.sh
-
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-CMD ["bash"]
-```
-
-Key features:
-- Ubuntu 24.04 base for stability
-- Package scripts for cache efficiency
-- Non-root user for security
-- gosu for privilege dropping
-- Custom entrypoint for UID/GID mapping
-
-## Development Stage
+Package scripts should fail on installation errors. When recording output
+with `tee`, enable pipefail in the RUN shell:
 
 ```dockerfile
-FROM compile-dev-base AS compile-for-dev
-# No changes - just provides a named target
+RUN bash -o pipefail -c './packages-dev.sh 2>&1 | tee /var/packages-dev.out'
 ```
 
-Simple extension for general development.
+## Source ownership and entrypoints
 
-## AI Tool Stages
+The example's root entrypoint maps the mounted source's UID/GID to a container
+user, then executes through gosu with `HOME=/home/dev`. Keep ownership repairs
+to the container home and necessary dependency volumes, not the source tree.
+`docker compose exec` bypasses ENTRYPOINT: use the entrypoint explicitly or
+select the mapped user. Ensure `procps` exists for shared-shell tracking.
 
-### Claude Code
+An alternative is to build a non-root user with `ARG DEV_UID`, passing the
+host UID (including a CI runner's or sudo caller's UID) and using a matching
+image tag. That approach avoids root startup but requires rebuilding for a
+changed UID and deliberate group handling. Preserve a working project's
+existing strategy rather than combining both without a reason.
 
-```dockerfile
-FROM compile-dev-base AS compile-for-claude
+## Dependencies and browser tests
 
-RUN apt-get update && apt-get install -y nodejs npm
+Bind-mounted source hides dependencies copied into that path. Install them
+outside it, use separate dependency volumes, or run tests against an image
+without the source mount. Keep test dependency installs separate from a
+running development service's shared dependency directory. Download caches
+can often be shared; installed dependencies cannot always be shared safely.
 
-# Install Claude Code CLI
-RUN npm install -g @anthropic-ai/claude-code
-```
-
-### OpenAI Codex
-
-```dockerfile
-FROM compile-dev-base AS compile-for-codex
-
-RUN apt-get update && apt-get install -y nodejs npm
-
-# Install OpenAI Codex CLI
-RUN npm install -g @openai/codex
-```
-
-## Package Scripts
-
-### packages-runtime.sh
-
-Minimal runtime dependencies:
-```bash
-#!/bin/bash
-export DEBIAN_FRONTEND=noninteractive
-apt-get update
-apt-get install -y git
-```
-
-Add language runtimes as needed (python3, nodejs, golang, etc.).
-
-### packages-dev.sh
-
-Development tools:
-```bash
-#!/bin/bash
-export DEBIAN_FRONTEND=noninteractive
-apt-get update
-apt-get install -y \
-    curl \
-    emacs-nox \
-    fd-find \
-    jq \
-    ripgrep
-```
-
-Add project-specific dev tools.
-
-## Cache Optimization
-
-The COPY + RUN pattern for package scripts optimizes caching:
-- Scripts only copied when changed
-- apt-get only runs when scripts change
-- Layer reuse across builds
-
-## Adding Custom Stages
-
-For specialized tools, add new stages:
-
-```dockerfile
-FROM compile-dev-base AS compile-for-mytools
-
-# Install custom tools
-RUN apt-get update && apt-get install -y mytool
-
-# Or from npm/pip/cargo
-RUN pip install mytool
-```
-
-Then reference in compose.yml:
-```yaml
-dev-mytools:
-  extends: dev-base
-  build:
-    target: compile-for-mytools
-```
-
-## entrypoint.sh Function
-
-The entrypoint script:
-1. Reads UID/GID of /devsrc (host files)
-2. Creates matching group if needed
-3. Modifies or identifies user with that UID
-4. Runs command as that user with gosu
-
-This ensures files created in container have correct ownership on host.
+Install browser binaries and their libraries during the image build. Match
+Playwright's browser version to the locked package version and use a path
+readable by the runtime user. If Chrome/driver drift causes failures, pin a
+matched pair and verify downloads. Add sandbox capabilities only where the
+actual browser runner requires them, not to all services by default.
