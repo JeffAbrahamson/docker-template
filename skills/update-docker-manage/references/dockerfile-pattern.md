@@ -29,7 +29,19 @@ Copy package scripts and dependency manifests before changing source. Install
 locked dependencies before `COPY . .` so source edits reuse dependency layers.
 Use frozen/locked installers and avoid modifying host lockfiles during tests.
 For example, Bundler may need `BUNDLE_APP_CONFIG` outside the checkout to
-ignore a host-only `.bundle/config`, plus `BUNDLE_FROZEN=true`.
+ignore a host-only `.bundle/config`, plus `BUNDLE_FROZEN=true`. Apply these
+settings before the image installation: Compose `environment:` affects running
+containers, not Dockerfile `RUN` instructions. For a Ruby image, for example:
+
+```dockerfile
+COPY Gemfile Gemfile.lock /opt/app/
+WORKDIR /opt/app
+RUN BUNDLE_APP_CONFIG=/tmp/bundle-config BUNDLE_FROZEN=true bundle install
+```
+
+Choose an installation path outside the source bind mount, and configure the
+runtime to use that same gem path. Keep runtime frozen settings as well if
+commands may install dependencies after startup.
 
 Native dependencies beyond distro packages may warrant their own installation
 layer before changing application source. Choose the installer and layout for

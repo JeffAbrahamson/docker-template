@@ -117,7 +117,9 @@ to change a consuming project's runtime.
 Copy manifests and lockfiles before application source so dependency layers
 remain cached across source edits. Use lock-preserving installers (`npm ci`,
 `yarn --frozen-lockfile`, frozen Bundler configuration, or the project's Python
-lock workflow). Ignore host-only dependency settings when needed, such as
+lock workflow). Set these options in the Dockerfile before installing image
+dependencies; Compose runtime environment settings do not apply to image
+builds. Ignore host-only dependency settings when needed, such as
 `.bundle/config` pointing at a host path. Keep dependencies outside a source
 bind mount, or give their directories dedicated volumes: mounting the host
 checkout hides files installed at the same path during image construction.
