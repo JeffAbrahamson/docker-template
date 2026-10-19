@@ -8,6 +8,9 @@ and cleanup; callers should not need to `cd docker` first.
 Use strict shell options, safe action parsing, usage on invalid input, and
 `"$@"` for forwarded arguments. `-b` before the action performs
 `build --no-cache <service>`; normal commands use `--build` with cache.
+The example retains `--build` after `-b` because the selected service may
+have dependencies whose images also need building. Omit that second phase
+only when the project has no buildable dependencies, or builds them explicitly.
 
 ## One-shot commands
 

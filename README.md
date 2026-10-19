@@ -27,7 +27,8 @@ Before copying, read [BEST-PRACTICES.md](BEST-PRACTICES.md). Change the Compose
 project name and image tag, select a base image compatible with the project's
 runtime, and replace the sample Make commands. Always expose a `test` action
 that executes the project's verification gate, even if that gate is lint-only.
-The template itself has no Makefile or test suite.
+The template itself has no Makefile. Run its Docker-free launcher regression
+checks with `bash tests/docker-manage-test.sh` on the host.
 
 Add or review a project-specific `.dockerignore` at each build-context root;
 with the sample Compose file's `context: ..`, that is the repository root,

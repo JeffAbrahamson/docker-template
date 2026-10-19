@@ -29,6 +29,8 @@ The entrypoint needs root for setup, then executes the command through gosu.
 
 ## Verification
 
+Run `bash tests/docker-manage-test.sh` for Docker-free launcher regression
+checks, including argument boundaries, failures and shared-shell cleanup.
 Check changed shell files with `bash -n`, and render both Compose examples
 with `docker compose -f <file> config --quiet`. Run behavior checks for script
 changes, including failures and quoted arguments. Do not build the template's

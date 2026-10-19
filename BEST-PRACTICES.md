@@ -43,6 +43,9 @@ that contract. Do not build command strings from unquoted arguments.
 
 Normal commands should build with cache. Reserve `-b` for an explicit
 `docker compose build --no-cache <service>` before running the action.
+Keep the subsequent `--build` when dependency services may also need images;
+rebuilding only the selected service does not build its dependencies. Projects
+without buildable dependencies can omit that second build phase after `-b`.
 A no-cache rebuild does not clear dependency volumes or test databases.
 
 ## Give every repository its own Compose identity
