@@ -25,9 +25,13 @@ skill. For an upgrade, apply the relevant improvements to the existing files;
 do not replace them wholesale. Make scripts executable when needed.
 
 The examples are stored flat for reference; install them in this project layout
-so Compose's build paths and the Dockerfile's `COPY` paths resolve:
+so Compose's build paths and the Dockerfile's `COPY` paths resolve. Also add
+or review a project-specific `.dockerignore` at the actual build-context root
+(the repository root for the examples' `context: ..`); it is not a file to
+install blindly under `docker/`. For the sample context:
 
 ```text
+.dockerignore                # project-specific contents
 docker/
 ├── Dockerfile
 ├── compose.yml
@@ -54,15 +58,21 @@ entrypoint running as root for UID/GID setup; it drops privileges through gosu.
   Preserve named data volumes; a no-cache rebuild does not reset volumes.
 - Preserve quoted runner arguments with `"$@"`. Missing/unknown actions and
   invalid options should print usage and return nonzero.
-- Keep local and CI test entry points aligned. A test target may include lint,
-  formatting checks, and multiple suites; its final status must cover all of them.
+- Always provide a `test` action mapped to the project's real verification
+  gate, including a lint-only gate where appropriate. Keep local and CI entry
+  points aligned; CI must execute the runner, not just install dependencies.
+  The final status must cover all included checks and suites.
 - Match the host UID/GID for writable bind mounts, then run commands as that
   user with a usable `HOME`. An `exec` needs the same user handling.
 
 The examples use Make; replace commands with the project's actual workflow.
 Choose the base image from runtime requirements rather than copying a generic
 Ubuntu version. Keep the project's lockfiles authoritative and dependency
-layers cached separately from changing source.
+layers cached separately from changing source. Review `.dockerignore` against
+Dockerfile inputs and version-generation requirements. Exclude unnecessary
+context, host output, and local private files where applicable, to avoid
+needless transfers, copies, and cache growth. Do not assume source or `.git`
+can be excluded: required contents vary by project.
 
 ## Conditional guidance
 
@@ -86,7 +96,12 @@ references here remain usable when this skill is installed on its own.
 Run `bash -n` on changed shell files and `docker compose -f <file> config
 --quiet` on changed Compose files. Check dispatch and failure propagation
 when the wrapper changes. Run the affected project's real command when its
-toolchain and dependencies are available. For database changes, verify
+toolchain and dependencies are available. Verify that successive test runs on
+an unchanged checkout actually execute checks, then change a supported filter
+or selector without rebuilding source and confirm the selected checks run.
+Tests tied only to compilation/linking can silently skip execution when warm.
+Check failure propagation across loops and multiple suites, and confirm CI
+reaches the same verification runner. For database changes, verify
 readiness, isolation, and cleanup without affecting a running development
 stack. Do not treat a syntax/configuration check as a passing test suite.
 

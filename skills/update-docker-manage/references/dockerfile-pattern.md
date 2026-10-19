@@ -4,6 +4,20 @@ Adapt [the example Dockerfile](../examples/Dockerfile). `compile-dev-base`
 installs dependencies and the UID/GID entrypoint; `compile-for-dev` provides
 a named development target. No agent-specific stages are needed.
 
+## Build context
+
+Add or review `.dockerignore` at the root of each actual build context. The
+sample Compose file uses `context: ..`, so its ignore file belongs at the
+repository root, not beside the Dockerfile in `docker/`. Exclude unneeded
+host dependencies, generated output, private local files, and artefacts as
+appropriate. This reduces transfers, accidental copies, and cache growth or
+invalidation when changing files would otherwise enter copied layers.
+
+Choose exclusions per project and image purpose; do not copy a universal
+list. Keep required source, manifests, locks, and Git metadata used for
+version generation. Check all `COPY`/`ADD` inputs and versioning steps against
+the exclusions, then inspect context size and cache reuse during validation.
+
 ## Runtime and caching
 
 Select the image/runtime from the project's version files, locks, and
@@ -17,8 +31,15 @@ Use frozen/locked installers and avoid modifying host lockfiles during tests.
 For example, Bundler may need `BUNDLE_APP_CONFIG` outside the checkout to
 ignore a host-only `.bundle/config`, plus `BUNDLE_FROZEN=true`.
 
-Package scripts should fail on installation errors. When recording output
-with `tee`, enable pipefail in the RUN shell:
+Native dependencies beyond distro packages may warrant their own installation
+layer before changing application source. Choose the installer and layout for
+the project, pin fetched versions or commits, and put required libraries
+outside the source bind mount or in an appropriate dependency volume. There
+is no generic native-library installation layout to import.
+
+Package scripts and nested installers should fail on installation errors.
+Outer `pipefail` cannot detect a child that masks its own failure. When
+recording output with `tee`, enable pipefail in the RUN shell:
 
 ```dockerfile
 RUN bash -o pipefail -c './packages-dev.sh 2>&1 | tee /var/packages-dev.out'

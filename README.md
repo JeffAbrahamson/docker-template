@@ -25,8 +25,16 @@ invocation from the repository root and preserves quoted arguments.
 
 Before copying, read [BEST-PRACTICES.md](BEST-PRACTICES.md). Change the Compose
 project name and image tag, select a base image compatible with the project's
-runtime, and replace the sample Make commands. The template itself has no
-Makefile or test suite.
+runtime, and replace the sample Make commands. Always expose a `test` action
+that executes the project's verification gate, even if that gate is lint-only.
+The template itself has no Makefile or test suite.
+
+Add or review a project-specific `.dockerignore` at each build-context root;
+with the sample Compose file's `context: ..`, that is the repository root,
+not `docker/`. Exclude unnecessary context and generated output to avoid
+needless transfers, copied files, and build-cache growth. Contents depend on
+the project: keep source, lockfiles, and Git metadata when the build needs them.
+See [build-context guidance](BEST-PRACTICES.md#limit-the-build-context).
 
 The [update-docker-manage skill](skills/update-docker-manage/SKILL.md) includes
 adaptable examples and detailed references. `./install-skills.sh` copies it

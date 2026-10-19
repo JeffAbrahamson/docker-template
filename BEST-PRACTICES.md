@@ -12,11 +12,21 @@ Run agents on the host. Let them call `docker-manage.sh` for builds, lint,
 tests, and shells. Agent CLI targets, agent-specific Dockerfile stages,
 credential mounts, and entrypoint workarounds for launching agents are obsolete.
 
-Expose the repository's actual workflows. `test` may mean `./test.sh`, Ruby
-unit tests, browser suites, or a combined lint/format/test gate. A project
-without a compilation step need not have `build`. Add useful focused commands
-such as `lint`, `jstest`, `webpack`, or an opt-in database integration suite.
-Keep CI and local commands on the same service and dependency setup.
+Expose the repository's actual workflows. Always provide a `test` action
+mapped to the project's verification gate. This may mean `./test.sh`, Ruby
+unit tests, browser suites, or a combined lint/format/test gate; a lint-only
+project can use its checks as the gate. A project without a compilation step
+need not have `build`. Add useful focused commands such as `lint`, `jstest`,
+`webpack`, or an opt-in database integration suite.
+Keep CI and local commands on the same service and dependency setup. CI must
+invoke the verification runner, not merely install its environment.
+
+A successful command must actually run the checks. In compiled projects,
+separate execution from compilation: tests embedded only in link recipes can
+silently disappear when binaries are up to date. Re-run the test action on an
+unchanged checkout, then change a supported selector or filter without editing
+source. Confirm both runs execute the intended tests and preserve failures,
+including failures early in a loop or before a later successful suite.
 
 ## Make invocation predictable
 
@@ -80,6 +90,23 @@ not synchronization: a shell opening during cleanup can race the stop.
 Use `down` for explicit development-stack shutdown, not after each shell or
 one-shot command that shares the stack with other work.
 
+## Limit the build context
+
+Add or review a project-specific `.dockerignore` at the actual build-context
+root, as selected by Compose's `build.context`. With this template's
+`context: ..`, place it at the repository root, not inside `docker/`. Review
+each context separately when a project has several builds.
+
+Exclude files the image does not need, such as applicable host dependencies,
+generated output, private local configuration, and build artefacts. This
+limits context transfer and accidental `COPY` contents, and reduces needless
+cache invalidation and build-cache growth when those files would be copied.
+There is no universal exclusion list: retain source and dependency inputs,
+and retain Git metadata if version generation requires it. A toolchain-only
+image and an image that builds or tests copied source need different rules.
+Check Dockerfile `COPY`/`ADD` inputs and version-generation steps against the
+exclusions before building; review context size and cache reuse afterwards.
+
 ## Match runtimes and dependency locks
 
 Choose runtime versions from project files and production requirements.
@@ -94,6 +121,14 @@ lock workflow). Ignore host-only dependency settings when needed, such as
 `.bundle/config` pointing at a host path. Keep dependencies outside a source
 bind mount, or give their directories dedicated volumes: mounting the host
 checkout hides files installed at the same path during image construction.
+
+Projects with native libraries beyond distro packages may need a separate
+installation layer, before changing application source. Adapt its layout to
+the project, pin fetched dependencies to known versions or commits, and make
+nested installer scripts fail on errors; an outer `pipefail` cannot detect a
+child script that hides its own failure. Install required libraries outside
+the source bind mount, or use an appropriate dependency volume. The exact
+installer and directory layout are project-specific.
 
 For fast development, a named dependency volume can be refreshed when the
 lockfile or runtime changes. streamer-js-web stamps and locks its shared
@@ -123,7 +158,11 @@ select the mapped user, directly or through the entrypoint.
 Use a disposable local database for database tests, with service DNS names,
 explicit test credentials, and `tmpfs` or disposable volumes for test data.
 Keep staging SSH tunnels and real database secrets in development services;
-tests should not need them. `--no-deps` is useful for focused jobs that do
+tests should not need them. When development needs a remote connection,
+a separate optional SSH-tunnel service can keep SSH tooling out of the
+compiler image. Hosts, ports, authentication, readiness, and service
+relationships are project-specific; this is a possibility, not a required
+service in every project. `--no-deps` is useful for focused jobs that do
 not require a database, such as jellybooks-ng's webpack and Jest commands.
 
 Wait for readiness with healthchecks and `depends_on: condition:
@@ -166,4 +205,6 @@ Validate shell syntax and rendered Compose configuration first. Then exercise
 the affected workflow, including failure status, quoted arguments, ownership,
 and cleanup where those changed. For this template, use mocked Docker calls
 to check dispatch; run real build/tests in the consuming project with its
-actual source and toolchain.
+actual source and toolchain. Verify that tests execute on successive unchanged
+runs and after a selector change, and that CI invokes the same verification
+gate. Syntax checks and environment installation do not establish this.

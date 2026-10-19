@@ -34,6 +34,11 @@ and `SSH_AUTH_SOCK` only for workflows needing SSH. Keep staging tunnels and
 private configuration out of test services. No agent credential mounts belong
 in this pattern.
 
+A separate optional development SSH-tunnel service may keep SSH tooling out
+of the compiler image when a project needs remote connections. Its hosts,
+ports, authentication, readiness, and dependency relationships must follow
+the project; do not add a generic tunnel stack or make tests depend on it.
+
 ## Test databases and dependency readiness
 
 Use a disposable local database, explicit test-only credentials and service

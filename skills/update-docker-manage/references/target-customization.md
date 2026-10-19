@@ -2,8 +2,26 @@
 
 Use the repository's existing runner and CI contract. Do not add build targets
 for projects with nothing to compile, or assume `test` means unit tests alone.
-Production uses a `test.sh` lint gate; webpub-viewer combines lint, format,
-root tests, and workspace tests. A final success must cover the whole gate.
+Always expose a `test` action that runs the project's actual verification
+gate. Production uses a `test.sh` lint gate; webpub-viewer combines lint,
+format, root tests, and workspace tests. A final success must cover the whole
+gate. CI must invoke the runner, not stop after installing its environment.
+
+## Test execution is separate from building
+
+For compiled projects, keep running tests separate from building binaries.
+Tests run only from compilation or link recipes can be skipped when binaries
+are current, and changing a filter alone may not retrigger those recipes.
+Use an explicit test-running target or runner that executes on every request;
+keep compilation as a prerequisite where needed. Preserve project-specific
+wrappers, environment, filters, and multi-configuration coverage.
+
+Verify two successive test invocations on an unchanged checkout both run the
+suite. Then change a supported selector or filter without source edits and
+confirm the intended checks execute. Verify that a failure early in a loop or
+suite sequence cannot be hidden by a later success, and that CI reaches this
+same gate. Successful environment installation or image construction is not
+evidence that tests ran.
 
 ## Runtime-specific choices
 
