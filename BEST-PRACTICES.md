@@ -120,9 +120,9 @@ to change a consuming project's runtime.
 Copy manifests and lockfiles before application source so dependency layers
 remain cached across source edits. Use lock-preserving installers (`npm ci`,
 `yarn --frozen-lockfile`, frozen Bundler configuration, or the project's Python
-lock workflow). Set these options in the Dockerfile before installing image
-dependencies; Compose runtime environment settings do not apply to image
-builds. Ignore host-only dependency settings when needed, such as
+lock workflow). Set these options with Dockerfile `ENV` before installing
+image dependencies; Compose runtime environment settings do not apply to image
+builds, while `ENV` covers both builds and running containers. Ignore host-only dependency settings when needed, such as
 `.bundle/config` pointing at a host path. Keep dependencies outside a source
 bind mount, or give their directories dedicated volumes: mounting the host
 checkout hides files installed at the same path during image construction.
@@ -210,6 +210,5 @@ Validate shell syntax and rendered Compose configuration first. Then exercise
 the affected workflow, including failure status, quoted arguments, ownership,
 and cleanup where those changed. For this template, use mocked Docker calls
 to check dispatch; run real build/tests in the consuming project with its
-actual source and toolchain. Verify that tests execute on successive unchanged
-runs and after a selector change, and that CI invokes the same verification
-gate. Syntax checks and environment installation do not establish this.
+actual source and toolchain, including the test-execution checks described
+under [Keep Docker focused on the project](#keep-docker-focused-on-the-project).

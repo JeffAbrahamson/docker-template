@@ -32,10 +32,7 @@ checks with `bash tests/docker-manage-test.sh` on the host.
 
 Add or review a project-specific `.dockerignore` at each build-context root;
 with the sample Compose file's `context: ..`, that is the repository root,
-not `docker/`. Exclude unnecessary context and generated output to avoid
-needless transfers, copied files, and build-cache growth. Contents depend on
-the project: keep source, lockfiles, and Git metadata when the build needs them.
-See [build-context guidance](BEST-PRACTICES.md#limit-the-build-context).
+not `docker/`. See [build-context guidance](BEST-PRACTICES.md#limit-the-build-context).
 
 The [update-docker-manage skill](skills/update-docker-manage/SKILL.md) includes
 adaptable examples and detailed references. `./install-skills.sh` copies it

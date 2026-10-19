@@ -28,20 +28,19 @@ runtimes or tools, pin versions and verify checksums where applicable.
 Copy package scripts and dependency manifests before changing source. Install
 locked dependencies before `COPY . .` so source edits reuse dependency layers.
 Use frozen/locked installers and avoid modifying host lockfiles during tests.
-For example, Bundler may need `BUNDLE_APP_CONFIG` outside the checkout to
-ignore a host-only `.bundle/config`, plus `BUNDLE_FROZEN=true`. Apply these
-settings before the image installation: Compose `environment:` affects running
-containers, not Dockerfile `RUN` instructions. For a Ruby image, for example:
+Set frozen-install options and dependency locations with Dockerfile `ENV`
+before the installation step: Compose `environment:` affects running
+containers, not Dockerfile `RUN` instructions, whereas `ENV` applies to both.
+Install dependencies outside the source bind mount, or give their directories
+dedicated volumes, so the mount does not hide them. Host-only configuration inside the checkout becomes visible at runtime
+through that mount, so point tools away from it where needed. For example:
 
-```dockerfile
-COPY Gemfile Gemfile.lock /opt/app/
-WORKDIR /opt/app
-RUN BUNDLE_APP_CONFIG=/tmp/bundle-config BUNDLE_FROZEN=true bundle install
-```
-
-Choose an installation path outside the source bind mount, and configure the
-runtime to use that same gem path. Keep runtime frozen settings as well if
-commands may install dependencies after startup.
+- Node.js: `npm ci`, or Yarn with `--frozen-lockfile` (Classic) or
+  `--immutable` (Berry).
+- Ruby: `BUNDLE_FROZEN=true`, with `BUNDLE_APP_CONFIG` outside the checkout to
+  ignore a host-only `.bundle/config`.
+- Python: a virtual environment outside the mount, on `PATH`, installed from
+  the project's lock or pinned requirements.
 
 Native dependencies beyond distro packages may warrant their own installation
 layer before changing application source. Choose the installer and layout for

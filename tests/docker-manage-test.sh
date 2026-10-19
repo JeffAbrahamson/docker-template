@@ -30,6 +30,7 @@ case "$1" in
         ;;
     stop) exit "${STOP_STATUS:-0}" ;;
     down) exit "${DOWN_STATUS:-0}" ;;
+    *) exit 98 ;;
 esac
 MOCK
 chmod +x "$temporary_dir/docker"
@@ -39,13 +40,16 @@ run_launcher() {
     : > "$DOCKER_TEST_LOG"
     status=0
     (cd "$temporary_dir" && "$launcher" "$@") > "$temporary_dir/output" 2>&1 || status=$?
-    mapfile -t calls < "$DOCKER_TEST_LOG"
+    calls=()
+    while IFS= read -r line; do calls+=("$line"); done < "$DOCKER_TEST_LOG"
 }
+expect_output() { grep -qxF -- "$1" "$temporary_dir/output" || fail "Missing output: $1"; }
 expect_status() { [ "$status" -eq "$1" ] || fail "Expected status $1, got $status"; }
 expect_count() { [ "${#calls[@]}" -eq "$1" ] || fail "Expected $1 Docker calls, got ${#calls[@]}"; }
 expect_call() {
     local index="$1" expected
     shift
+    [ "$index" -lt "${#calls[@]}" ] || fail "Missing Docker call $index; got ${#calls[@]} calls"
     printf -v expected '%q ' compose -f "$compose_file" "$@"
     [ "${calls[index]}" = "$expected" ] || fail "Unexpected Docker call: ${calls[index]} (expected $expected)"
 }
@@ -57,18 +61,22 @@ expect_count 1
 expect_call 0 run --rm --build dev-test
 run_launcher test 'TESTOPTS=title with spaces' 'quote"and$literal'
 expect_status 0
+expect_count 1
 expect_call 0 run --rm --build dev-test make test 'TESTOPTS=title with spaces' 'quote"and$literal'
 run_launcher build
 expect_status 0
+expect_count 1
 expect_call 0 run --rm --build dev-compile
 run_launcher build 'target with spaces'
 expect_status 0
+expect_count 1
 expect_call 0 run --rm --build dev-compile /bin/bash -c 'exec make -j "$(nproc)" -k "$@"' -- 'target with spaces'
 
 for action in build test sh; do
     case "$action" in build) service=dev-compile ;; *) service="dev-$action" ;; esac
     run_launcher -b "$action"
     expect_status 0
+    if [ "$action" = sh ]; then expect_count 5; else expect_count 2; fi
     expect_call 0 build --no-cache "$service"
     # Retain --build so adapted projects can build dependency services too.
     if [ "$action" = sh ]; then
@@ -102,9 +110,15 @@ expect_status 45
 PS_STATUS=47 run_launcher sh
 expect_status 47
 expect_count 3
+# Count distinct terminals once each; ignore non-terminal and non-bash processes.
 OTHER_SHELLS=$'pts/1 bash\npts/1 bash\n? sleep\n' run_launcher sh
 expect_status 0
 expect_count 3
+expect_output '1 shells still running.'
+OTHER_SHELLS=$'TT COMMAND\n? bash\npts/0 sleep\n' run_launcher sh
+expect_status 0
+expect_count 4
+expect_call 3 stop dev-sh
 
 run_launcher down
 expect_status 0
@@ -112,10 +126,11 @@ expect_count 1
 expect_call 0 down
 DOWN_STATUS=48 run_launcher down
 expect_status 48
-for invalid in '' unknown -x; do
+for invalid in '' unknown -x -b; do
     run_launcher "$invalid"
     expect_status 1
     expect_count 0
+    expect_output "Usage: $launcher [-b] build|test|sh|down [arguments...]"
 done
 
 cmp "$launcher" "$repository_dir/skills/update-docker-manage/examples/docker-manage.sh" || fail 'Launcher example differs'

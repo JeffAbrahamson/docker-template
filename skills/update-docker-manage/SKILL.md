@@ -96,12 +96,10 @@ references here remain usable when this skill is installed on its own.
 Run `bash -n` on changed shell files and `docker compose -f <file> config
 --quiet` on changed Compose files. Check dispatch and failure propagation
 when the wrapper changes. Run the affected project's real command when its
-toolchain and dependencies are available. Verify that successive test runs on
-an unchanged checkout actually execute checks, then change a supported filter
-or selector without rebuilding source and confirm the selected checks run.
-Tests tied only to compilation/linking can silently skip execution when warm.
-Check failure propagation across loops and multiple suites, and confirm CI
-reaches the same verification runner. For database changes, verify
+toolchain and dependencies are available, and confirm that tests actually
+execute on repeated and filtered runs, as described in
+[target-customization.md](references/target-customization.md#test-execution-is-separate-from-building).
+For database changes, verify
 readiness, isolation, and cleanup without affecting a running development
 stack. Do not treat a syntax/configuration check as a passing test suite.
 
